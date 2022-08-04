@@ -1,3 +1,4 @@
+require('dotenv').config() //requiring the dotenv module as quickly as possible so as to access the .env values all over the program
 const express = require("express");
 const ejs = require("ejs");
 const mongoose = require("mongoose");
@@ -22,10 +23,10 @@ const userSchema = new mongoose.Schema({ //new mongoose.Schema object
     }
 });
 
-
-const secret = "Thisisforencryption"
-//// require('dotenv').config() //requiring the dotenv module as quickly as possible so as to access the .env values all over the program//removed the following line to grab it from .env file.to access the variables in .env, use process.env.<variablename>
-userSchema.plugin(mongooseEncryption, { secret: secret , encryptedFields : ['password'] }); //attaching a new plugin to the password field of our DB
+//removed the following line to grab it from .env file.
+// const secret = "Thisisforencryption"
+//to access the variables in .env, use process.env.<variablename>
+userSchema.plugin(mongooseEncryption, { secret: process.env.SECRET , encryptedFields : ['password'] }); //attaching a new plugin to the password field of our DB
 
 const userModel = mongoose.model("User",userSchema);
 
