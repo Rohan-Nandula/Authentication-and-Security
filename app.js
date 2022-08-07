@@ -1,10 +1,14 @@
-
+require("dotenv").config();
 const express = require("express");
 const ejs = require("ejs");
 const mongoose = require("mongoose");
-const session = require("express-session");//New Step
-const passport = require("passport");//New Step
-const passportLocalMongoose = require("passport-local-mongoose"); //New Step
+const session = require("express-session");
+const passport = require("passport");
+const passportLocalMongoose = require("passport-local-mongoose"); 
+const GoogleStrategy = require('passport-google-oauth20').Strategy;//New Step
+const findOrCreate = require('mongoose-findorcreate'); //New Step
+const { Strategy } = require("passport-local");
+const facebookStrategy = require("passport-facebook").Strategy;//New Step
 const app = express();
 
 app.set('view engine', 'ejs');
@@ -17,8 +21,8 @@ app.use(session({
     saveUninitialized: false
   })); //New steps : Check Docs of Passport.js(This has to be placed exactly where it is)
 
-app.use(passport.initialize());//New Step
-app.use(passport.session());//New Step
+app.use(passport.initialize());
+app.use(passport.session());
 
 mongoose.connect("mongodb://localhost:27017/userDB");
 
@@ -28,20 +32,81 @@ const userSchema = new mongoose.Schema({ //new mongoose.Schema object
     },
     password : {
         type : String
-    }
+    },
+    googleId:String //New Step to preserve the status of a old user
 });
 
-userSchema.plugin(passportLocalMongoose);//New Step
+userSchema.plugin(passportLocalMongoose);
+userSchema.plugin(findOrCreate);//New Step
 
 const userModel = mongoose.model("User",userSchema);
 
-passport.use(userModel.createStrategy());//New Step
-passport.serializeUser(userModel.serializeUser());//New Step
-passport.deserializeUser(userModel.deserializeUser());//New Step
+passport.use(userModel.createStrategy());
+passport.serializeUser(function (user,done){
+    done(null , user.id)
+}); //New Step
+passport.deserializeUser(function (id,done){
+    userModel.findById(id,function(err,user){
+        done(err,user);
+    });
+}); //New Step
 
+passport.use(new GoogleStrategy({
+    clientID: process.env.CLIENT_ID,//New Step
+    clientSecret: process.env.CLIENT_SECRET,//New Step
+    callbackURL: "http://localhost:3000/auth/google/secrets",//New Step --Helps google recognize the App that we want it to identify.
+    userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo" //New Step to circumvent the GOOGLE+ deprecation for profile elicitation
+  },
+  function(accessToken, refreshToken, profile, cb) {
+    console.log(profile);
+    userModel.findOrCreate({ 
+        googleId: profile.id 
+    }, function (err, user) {
+      return cb(err, user);
+    });
+  }
+)); //New Step for google based Authentication
+
+passport.use(new facebookStrategy({
+    clientID: process.env.FACEBOOK_APP_ID,
+    clientSecret: process.env.FACEBOOK_APP_SECRET,
+    callbackURL: "http://localhost:3000/auth/facebook/secrets"
+  },
+  function(accessToken, refreshToken, profile, cb) {
+    console.log(profile);
+    userModel.findOrCreate({
+      facebookId: profile.id
+    }, function(err, user) {
+      return cb(err, user);
+    });
+  }
+)); //New Step for facebook based Authentication
 
 app.get("/",function (req,res){
     res.render("home");
+});
+
+app.get('/auth/google',
+  passport.authenticate('google', { scope: ['profile'] })
+); //New Steps
+
+
+app.get('/auth/google/secrets', 
+  passport.authenticate('google', { failureRedirect: '/login' }),
+  function(req, res) {
+    // Successful authentication, redirect to secrets.
+    res.redirect('/secrets');
+});//NewSteps
+
+app.get("/auth/facebook",
+    passport.authenticate("facebook")
+);//New Steps
+
+app.get("/auth/facebook/secrets",
+    passport.authenticate("facebook", { failureRedirect: "/login" }),
+    function(req, res) {
+      // Successful authentication, redirect to secrets.
+      res.redirect("/secrets");
 });
 
 app.get("/login",function (req,res){
@@ -56,7 +121,7 @@ app.post("/login",function(req,res){
         if(err){
             console.log(err);
         }else{
-            passport.authenticate("/local")(req,res,function(){
+            passport.authenticate("local")(req,res,function(){
                 res.redirect("/secrets");
             });
         }
@@ -65,7 +130,7 @@ app.post("/login",function(req,res){
 });
 
 app.get("/secrets",function(req,res){
-    if(req.isAuthenticated()){
+    if(req.isAuthenticated()){ //Only accesing the page /secrets if the user is authenticated and has cookies and sessions
         res.render("secrets");
     }else{
         res.redirect('/login');
