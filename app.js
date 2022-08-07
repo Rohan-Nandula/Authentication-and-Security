@@ -33,7 +33,9 @@ const userSchema = new mongoose.Schema({ //new mongoose.Schema object
     password : {
         type : String
     },
-    googleId:String //New Step to preserve the status of a old user
+    googleId:String, //New Step to preserve the status of a old user
+    facebookId:String,
+    secret : String,
 });
 
 userSchema.plugin(passportLocalMongoose);
@@ -73,14 +75,16 @@ passport.use(new facebookStrategy({
     callbackURL: "http://localhost:3000/auth/facebook/secrets"
   },
   function(accessToken, refreshToken, profile, cb) {
-    console.log(profile);
-    userModel.findOrCreate({
-      facebookId: profile.id
+    console.log(profile.id);
+    userModel.findOrCreate({ 
+        facebookId: profile.id 
     }, function(err, user) {
       return cb(err, user);
     });
   }
 )); //New Step for facebook based Authentication
+
+// *******************************************************************************
 
 app.get("/",function (req,res){
     res.render("home");
@@ -130,12 +134,42 @@ app.post("/login",function(req,res){
 });
 
 app.get("/secrets",function(req,res){
+    userModel.find({"secret": {$ne: null}}, function(err, foundUsers){ //$ne = not equal ===it is basically used here to show all the secrets.
+        if (err){
+          console.log(err);
+        } else {
+          if (foundUsers) {
+            res.render("secrets", {usersWithSecrets: foundUsers});
+          }
+        }
+      });
+});
+app.get("/submit",function(req,res){
     if(req.isAuthenticated()){ //Only accesing the page /secrets if the user is authenticated and has cookies and sessions
-        res.render("secrets");
+        res.render("submit");
     }else{
         res.redirect('/login');
     }
 });
+app.post("/submit", function(req, res){
+    const submittedSecret = req.body.secret;
+  
+  //Once the user is authenticated and their session gets saved, their user details are saved to req.user.
+    // console.log(req.user.id);
+  
+    userModel.findById(req.user.id, function(err, foundUser){
+      if (err) {
+        console.log(err);
+      } else {
+        if (foundUser) {
+          foundUser.secret = submittedSecret;
+          foundUser.save(function(){
+            res.redirect("/secrets");
+          });
+        }
+      }
+    });
+  });
 
 app.get("/register",function (req,res){
     res.render("register");
